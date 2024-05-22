@@ -1,0 +1,70 @@
+# Based on https://github.com/open-contracting/cardinal-rs/blob/792a6df7d78f8800a0f86cbf081cbad4781faf43/.github/workflows/release.yml
+name: Release
+on:
+  push:
+    tags:
+      - "v([0-9]+\.){2}[0-9]+"
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }}
+  assets:
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # 32-bit (i686)
+          - build: linux-32-bit
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            command: cross
+          - build: windows-32-bit
+            os: ubuntu-latest
+            target: i686-pc-windows-gnu
+            command: cross
+          # 64-bit (x86)
+          - build: linux-64-bit
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            command: cross
+          - build: macos-64-bit
+            os: macos-latest
+            target: x86_64-apple-darwin
+            command: cargo
+          - build: windows-64-bit
+            os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            command: cross
+          # 64-bit (ARM)
+          - build: macos-arm
+            os: macos-latest
+            target: aarch64-apple-darwin
+            command: cargo
+          - build: linux-arm
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            command: cross
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo install cross --git https://github.com/cross-rs/cross
+      - run: ${{ matrix.command }} build --release --target ${{ matrix.target }}
+      - id: rename
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" =~ "-pc-windows-" ]]; then
+            SUFFIX=.exe
+          fi
+          OUTPUT="arker-${{ matrix.build }}$SUFFIX"
+          mv "target/${{ matrix.target }}/release/marker$SUFFIX" "$OUTPUT"
+          echo "path=$OUTPUT" >> $GITHUB_OUTPUT
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.ref_name }} ${{ steps.rename.outputs.path }}
